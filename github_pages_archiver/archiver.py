@@ -2,16 +2,30 @@ import argparse
 import logging
 import re
 import requests
+import urllib
 import xml.etree.ElementTree as ET
 
 
 def archive_url(url):
     """Submit a url to the Internet Archive to archive."""
-    logging.info("Archiving %s", url)
+    logging.info("Archiving %s with Internet Archive", url)
     SAVE_URL = "https://web.archive.org/save/"
     request_url = SAVE_URL + url
     logging.debug("Using archive url %s", request_url)
     r = requests.get(request_url)
+
+    # Raise `requests.exceptions.HTTPError` if 4XX or 5XX status
+    r.raise_for_status()
+
+
+def archive_url_archiveis(url):
+    """Submit a url to the Archive.is to archive."""
+    logging.info("Archiving %s with Archive.is", url)
+    SAVE_URL = "http://archive.today/"
+    encoded_url = urllib.parse.quote_plus(url)
+    params = {"run": 1, "url": encoded_url}
+    logging.debug("Using params %s", params)
+    r = requests.get(SAVE_URL, params=params, timeout=60*5)
 
     # Raise `requests.exceptions.HTTPError` if 4XX or 5XX status
     r.raise_for_status()
@@ -63,6 +77,16 @@ def main():
             'CRITICAL',
         ],
     )
+    parser.add_argument(
+        "--archiver",
+        help="set the archiver to use, defaults to InternetArchive",
+        dest="archiver",
+        default="InternetArchive",
+        choices=[
+            'InternetArchive',
+            'Archive.is',
+        ],
+    )
 
     args = parser.parse_args()
 
@@ -74,7 +98,10 @@ def main():
     # Download and process the sitemaps
     for sitemap in args.sitemaps:
         for url in download_sitemap(sitemap):
-            archive_url(url)
+            if args.archiver == "Archive.is":
+                archive_url_archiveis(url)
+            else:
+                archive_url(url)
 
 if __name__ == "__main__":
     main()
