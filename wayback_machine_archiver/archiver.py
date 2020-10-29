@@ -8,6 +8,7 @@ import re
 import requests
 import time
 import xml.etree.ElementTree as ET
+from check_archive import already_archived
 
 # Library version
 __version__ = "1.9.0"
@@ -16,18 +17,30 @@ __version__ = "1.9.0"
 # String used to prefix local sitemaps
 LOCAL_PREFIX = "file://"
 
+# Prefix for the save action
+SAVE_URL = "https://web.archive.org/save/"
+    
 
 def format_archive_url(url):
     """Given a URL, constructs an Archive URL to submit the archive request."""
     logging.debug("Creating archive URL for %s", url)
-    SAVE_URL = "https://web.archive.org/save/"
     request_url = SAVE_URL + url
-
     return request_url
 
+def deformat_archive_url(formatted_url):
+
+    if SAVE_URL not in formatted_url:
+        raise ValueError()
+
+    return formatted_url[len(SAVE_URL):]
 
 def call_archiver(request_url, rate_limit_wait, session):
     """Submit a url to the Internet Archive to archive."""
+
+    if already_archived(deformat_archive_url(request_url)):
+        logging.info("Skipping already-archived url %s", request_url)
+        return
+    
     if rate_limit_wait > 0:
         logging.debug("Sleeping for %s", rate_limit_wait)
         time.sleep(rate_limit_wait)
