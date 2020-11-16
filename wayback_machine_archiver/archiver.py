@@ -8,7 +8,6 @@ import re
 import requests
 import time
 import xml.etree.ElementTree as ET
-from check_archive import already_archived
 
 # Library version
 __version__ = "1.9.0"
@@ -20,6 +19,17 @@ LOCAL_PREFIX = "file://"
 # Prefix for the save action
 SAVE_URL = "https://web.archive.org/save/"
     
+def raw_to_request_url (raw_url):
+    # Given a site URL, convert it to request format for the Wayback Availability JSON API
+    return f"http://archive.org/wayback/available?url={raw_url}"
+
+def already_archived (raw_url):
+    # url -> status
+
+    formatted_url = raw_to_request_url(raw_url)
+    r = requests.get(formatted_url).json()
+
+    return "archived_snapshots" in r and r["archived_snapshots"]!={}
 
 def format_archive_url(url):
     """Given a URL, constructs an Archive URL to submit the archive request."""
@@ -34,10 +44,10 @@ def deformat_archive_url(formatted_url):
 
     return formatted_url[len(SAVE_URL):]
 
-def call_archiver(request_url, rate_limit_wait, session):
+def call_archiver(request_url, rate_limit_wait, session, only_first_archives=False):
     """Submit a url to the Internet Archive to archive."""
 
-    if already_archived(deformat_archive_url(request_url)):
+    if only_first_archives and already_archived(deformat_archive_url(request_url)):
         logging.info("Skipping already-archived url %s", request_url)
         return
     
@@ -181,7 +191,13 @@ def main():
         default=5,
         type=int,
     )
-
+    parser.add_argument(
+        "--only-first-archives",
+        help="Perform archiving only on URLs with no previous archiving efforts at the Wayback Machine. Note that false positives may occur: if a previous archive failed, then a repeat will still not be attempted.",
+        dest="only_first_archives",
+        default=False,
+        action="store_true"
+    )
     args = parser.parse_args()
 
     # Set the logging level based on the arguments
@@ -252,8 +268,8 @@ def main():
     logging.debug("Archive URLs: %s", archive_urls)
     pool = mp.Pool(processes=args.jobs)
     partial_call = partial(
-        call_archiver, rate_limit_wait=args.rate_limit_in_sec, session=session
-    )
+        call_archiver, rate_limit_wait=args.rate_limit_in_sec, session=session, 
+        only_first_archives=args.only_first_archives)
     pool.map(partial_call, archive_urls)
     pool.close()
     pool.join()
